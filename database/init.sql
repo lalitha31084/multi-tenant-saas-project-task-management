@@ -1,10 +1,12 @@
 -- Enable UUID extension
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
--- 1. TENANTS TABLE
+-- 1. TYPES & ENUMS
 CREATE TYPE tenant_status AS ENUM ('active', 'suspended', 'trial');
 CREATE TYPE subscription_plan AS ENUM ('free', 'pro', 'enterprise');
+CREATE TYPE user_role AS ENUM ('super_admin', 'tenant_admin', 'user');
 
+-- 2. TENANTS TABLE
 CREATE TABLE tenants (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     name VARCHAR(255) NOT NULL,
@@ -17,9 +19,7 @@ CREATE TABLE tenants (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- 2. USERS TABLE
-CREATE TYPE user_role AS ENUM ('super_admin', 'tenant_admin', 'user');
-
+-- 3. USERS TABLE
 CREATE TABLE users (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
@@ -33,7 +33,7 @@ CREATE TABLE users (
     UNIQUE(tenant_id, email)
 );
 
--- 3. PROJECTS TABLE
+-- 4. PROJECTS TABLE
 CREATE TABLE projects (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
@@ -44,9 +44,8 @@ CREATE TABLE projects (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
-CREATE INDEX idx_projects_tenant ON projects(tenant_id);
 
--- 4. TASKS TABLE
+-- 5. TASKS TABLE
 CREATE TABLE tasks (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     project_id UUID REFERENCES projects(id) ON DELETE CASCADE,
@@ -60,32 +59,15 @@ CREATE TABLE tasks (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
-CREATE INDEX idx_tasks_tenant_project ON tasks(tenant_id, project_id);
-
--- 5. AUDIT LOGS
-CREATE TABLE audit_logs (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
-    user_id UUID REFERENCES users(id) ON DELETE SET NULL,
-    action VARCHAR(255) NOT NULL,
-    entity_type VARCHAR(100),
-    entity_id VARCHAR(100),
-    ip_address VARCHAR(45),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
 
 -- SEED DATA
--- Insert Super Admin (Password: Admin@123 hashed)
-INSERT INTO users (email, password_hash, full_name, role, tenant_id)
-VALUES ('superadmin@system.com', '$2a$10$K.lPUDpiqyctW2mfEkwRVO3YPVr0l61ZZGJ0TxkxB8aVwQNMjNdna', 'System Admin', 'super_admin', NULL);
+-- Create the 'demo' tenant
+INSERT INTO tenants (name, subdomain, status, subscription_plan, max_users, max_projects)
+VALUES ('Demo Company', 'demo', 'active', 'pro', 25, 15)
+ON CONFLICT (subdomain) DO NOTHING;
 
-WITH demo AS (
-    INSERT INTO tenants (name, subdomain, status, subscription_plan, max_users, max_projects)
-    VALUES ('Demo Company', 'demo', 'active', 'pro', 25, 15)
-    ON CONFLICT (subdomain) DO UPDATE SET name = EXCLUDED.name
-    RETURNING id
-)
+-- Create the 'admin@demo.com' user linked to the 'demo' tenant
 INSERT INTO users (tenant_id, email, password_hash, full_name, role)
 SELECT id, 'admin@demo.com', '$2a$10$OnZIit9Pfl7Yf4FoF5OAW.ii9HNGmfTHl48DaTVJ.7diqgGVRK/EW', 'Demo Admin', 'tenant_admin'
-FROM demo
-ON CONFLICT (tenant_id, email) DO NOTHING;
+FROM tenants WHERE subdomain = 'demo'
+ON CONFLICT DO NOTHING;

@@ -1,8 +1,13 @@
 const { Pool } = require('pg');
 
+const isProduction = process.env.NODE_ENV === 'production';
+
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : false
+  // If we are in production (Render), use SSL. If localhost, disable it.
+  ssl: isProduction 
+    ? { rejectUnauthorized: false } 
+    : false
 });
 
 module.exports = {
