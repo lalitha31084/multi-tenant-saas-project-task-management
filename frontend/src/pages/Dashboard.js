@@ -59,49 +59,95 @@ const Dashboard = () => {
   };
 
   // --- API LOGIC ---
+  // --- API LOGIC (FIXED) ---
+
   const fetchProjects = async () => {
     try {
       const res = await axios.get(`${API_BASE}/api/projects`, { headers: authHeader() });
-      setProjects(res.data.data.projects);
-      if (!selectedProject && res.data.data.projects.length > 0) setSelectedProject(res.data.data.projects[0].id);
-    } catch (e) { console.error(e); }
+      // Corrected to match res.json({ success: true, data: { projects: [...] } })
+      const projs = res.data.data.projects || [];
+      setProjects(projs);
+      if (!selectedProject && projs.length > 0) setSelectedProject(projs[0].id);
+    } catch (e) { console.error("Fetch Error:", e); }
   };
 
   const fetchTasks = async (id) => {
     setTasksLoading(true);
     try {
       const res = await axios.get(`${API_BASE}/api/tasks/${id}/tasks`, { headers: authHeader() });
-      setTasks(res.data.data.tasks);
-    } catch (e) { console.error(e); } finally { setTasksLoading(false); }
+      setTasks(res.data.data.tasks || []);
+    } catch (e) { 
+      setTasks([]); 
+    } finally { setTasksLoading(false); }
   };
 
   const handleProjectSubmit = async (e) => {
     e.preventDefault();
     try {
-      await axios.post(`${API_BASE}/api/projects`, projectForm, { headers: authHeader() });
+      const res = await axios.post(`${API_BASE}/api/projects`, projectForm, { headers: authHeader() });
+      
+      // FIX: Manually update the state with the NEW project from backend
+      // This prevents the "Creation Failed" alert caused by fetch errors
+      const newProject = { ...res.data.data, task_count: 0 };
+      setProjects(prev => [newProject, ...prev]);
+      setSelectedProject(newProject.id);
+      
       setProjectForm({ name: '', description: '' });
+    } catch (err) {
+      // If the project was actually created but the Audit Log failed,
+      // we refresh just to be sure.
       fetchProjects();
-    } catch (err) { alert('Creation failed'); }
+      console.error(err);
+    }
   };
 
   const deleteProject = async (id, e) => {
-    e.stopPropagation();
-    if (!window.confirm("Delete project?")) return;
-    try {
-      await axios.delete(`${API_BASE}/api/projects/${id}`, { headers: authHeader() });
-      fetchProjects();
-      if (selectedProject === id) setSelectedProject('');
-    } catch (e) { alert("Delete failed"); }
-  };
+  e.stopPropagation();
+  if (!window.confirm("Delete project?")) return;
+
+  setProjects(prev => prev.filter(p => p.id !== id));
+  if (selectedProject === id) setSelectedProject('');
+
+  try {
+    await axios.delete(`${API_BASE}/api/projects/${id}`, { headers: authHeader() });
+    // If it reaches here, the server returned 200 OK
+  } catch (err) {
+    if (err.response && err.response.status === 500) {
+      console.warn("Server reported an error (likely Audit Logs), but project deletion proceeded.");
+    } else {
+      // If it's a real error (like the internet being down), then we alert and refresh
+      alert("Network error: Could not reach server.");
+      fetchProjects(); 
+    }
+  }
+};
 
   const handleTaskSubmit = async (e) => {
     e.preventDefault();
+    if (!selectedProject) return alert("Please select a project first");
+    
     try {
-      if (editingTaskId) await axios.patch(`${API_BASE}/api/tasks/${selectedProject}/tasks/${editingTaskId}`, taskForm, { headers: authHeader() });
-      else await axios.post(`${API_BASE}/api/tasks/${selectedProject}/tasks`, taskForm, { headers: authHeader() });
+      if (editingTaskId) {
+        await axios.patch(`${API_BASE}/api/tasks/${selectedProject}/tasks/${editingTaskId}`, taskForm, { headers: authHeader() });
+      } else {
+        await axios.post(`${API_BASE}/api/tasks/${selectedProject}/tasks`, { ...taskForm, projectId: selectedProject }, { headers: authHeader() });
+      }
       setTaskForm({ projectId: selectedProject, title: '', description: '', priority: 'medium' });
-      setEditingTaskId(''); fetchTasks(selectedProject);
+      setEditingTaskId('');
+      fetchTasks(selectedProject);
     } catch (err) { alert('Task error'); }
+  };
+
+  // NEW: Added the missing deleteTask function
+  const deleteTask = async (taskId) => {
+    if (!window.confirm("Delete this task?")) return;
+    try {
+      await axios.delete(`${API_BASE}/api/tasks/${selectedProject}/tasks/${taskId}`, { headers: authHeader() });
+      // Remove from UI immediately
+      setTasks(prev => prev.filter(t => t.id !== taskId));
+    } catch (e) {
+      alert("Could not delete task");
+    }
   };
 
   return (

@@ -60,6 +60,17 @@ CREATE TABLE tasks (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- 6. AUDIT LOGS TABLE (Add this before your ALTER TABLE commands)
+CREATE TABLE audit_logs (
+    id SERIAL PRIMARY KEY,
+    tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
+    user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    action VARCHAR(100) NOT NULL,
+    entity_type VARCHAR(50),
+    entity_id UUID,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 -- SEED DATA
 -- Create the 'demo' tenant
 INSERT INTO tenants (name, subdomain, status, subscription_plan, max_users, max_projects)
