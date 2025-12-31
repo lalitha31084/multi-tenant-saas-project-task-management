@@ -104,5 +104,5 @@ exports.deleteProject = async (req, res) => {
     res.json({ success: true, message: 'Project deleted successfully' });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
-  }
+  } 
 };
