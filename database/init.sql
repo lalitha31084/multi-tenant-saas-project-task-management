@@ -71,3 +71,19 @@ INSERT INTO users (tenant_id, email, password_hash, full_name, role)
 SELECT id, 'admin@demo.com', '$2a$10$OnZIit9Pfl7Yf4FoF5OAW.ii9HNGmfTHl48DaTVJ.7diqgGVRK/EW', 'Demo Admin', 'tenant_admin'
 FROM tenants WHERE subdomain = 'demo'
 ON CONFLICT DO NOTHING;
+
+-- 1. Ensure tasks are deleted when a project is deleted
+ALTER TABLE tasks 
+DROP CONSTRAINT IF EXISTS tasks_project_id_fkey,
+ADD CONSTRAINT tasks_project_id_fkey 
+    FOREIGN KEY (project_id) 
+    REFERENCES projects(id) 
+    ON DELETE CASCADE;
+
+-- 2. Ensure audit logs remain but are cleaned up if necessary
+ALTER TABLE audit_logs 
+DROP CONSTRAINT IF EXISTS audit_logs_tenant_id_fkey,
+ADD CONSTRAINT audit_logs_tenant_id_fkey 
+    FOREIGN KEY (tenant_id) 
+    REFERENCES tenants(id) 
+    ON DELETE CASCADE;

@@ -3,341 +3,185 @@ import axios from 'axios';
 import { AuthContext } from '../context/AuthContext';
 
 const API_BASE = process.env.REACT_APP_API_BASE || 'http://localhost:5000';
-const STATUS_OPTIONS = [
-  { value: 'todo', label: 'To do' },
-  { value: 'in_progress', label: 'In progress' },
-  { value: 'blocked', label: 'Blocked' },
-  { value: 'done', label: 'Done' },
-];
 
 const Dashboard = () => {
   const [projects, setProjects] = useState([]);
-  const [loading, setLoading] = useState(true);
   const [tasks, setTasks] = useState([]);
   const [tasksLoading, setTasksLoading] = useState(false);
   const [projectForm, setProjectForm] = useState({ name: '', description: '' });
-  const [taskForm, setTaskForm] = useState({ projectId: '', title: '', description: '', priority: 'medium', dueDate: '' });
+  const [taskForm, setTaskForm] = useState({ projectId: '', title: '', description: '', priority: 'medium' });
   const [selectedProject, setSelectedProject] = useState('');
   const [editingTaskId, setEditingTaskId] = useState('');
+  
   const { user, logout } = useContext(AuthContext);
-
   const isAdmin = user?.role === 'tenant_admin' || user?.role === 'super_admin';
-  const canEditTasks = isAdmin || user?.role === 'user';
 
-  useEffect(() => {
-    fetchProjects();
-  }, []);
+  useEffect(() => { fetchProjects(); }, []);
+  useEffect(() => { if (selectedProject) fetchTasks(selectedProject); }, [selectedProject]);
 
-  useEffect(() => {
-    if (selectedProject) {
-      fetchTasks(selectedProject);
-    }
-  }, [selectedProject]);
+  const authHeader = () => ({ Authorization: `Bearer ${localStorage.getItem('saas_token')}` });
 
-  const authHeader = () => {
-    const token = localStorage.getItem('saas_token');
-    return { Authorization: `Bearer ${token}` };
+  const theme = {
+    bg: '#0b1021',
+    bg2: '#0f1629',
+    card: '#151c32',
+    cardSoft: '#1c2440',
+    accent: '#7dd3fc',
+    accent2: '#a78bfa',
+    text: '#f8fbff',
+    muted: '#c7d2e6',
+    border: 'rgba(255, 255, 255, 0.08)',
+    danger: '#ef4444',
+    success: '#2dd4bf'
   };
 
+  const s = {
+    page: { backgroundColor: theme.bg, color: theme.text, minHeight: '100vh', fontFamily: 'Inter, sans-serif' },
+    // --- NEW HEADER STYLES ---
+    nav: { 
+      height: '70px', background: theme.card, borderBottom: `1px solid ${theme.border}`, 
+      display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 40px',
+      position: 'sticky', top: 0, zIndex: 100
+    },
+    logo: { fontSize: '20px', fontWeight: '800', letterSpacing: '1px', background: `linear-gradient(to right, ${theme.accent}, ${theme.accent2})`, WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' },
+    userSection: { display: 'flex', alignItems: 'center', gap: '20px' },
+    // --- LAYOUT STYLES ---
+    container: { padding: '40px', display: 'grid', gridTemplateColumns: '320px 1fr', gap: '30px' },
+    card: { background: theme.card, padding: '24px', borderRadius: '16px', border: `1px solid ${theme.border}`, boxShadow: '0 4px 20px rgba(0,0,0,0.3)' },
+    input: { background: theme.bg2, border: `1px solid ${theme.border}`, color: theme.text, padding: '12px', borderRadius: '8px', width: '100%', marginBottom: '12px', boxSizing: 'border-box', outline: 'none' },
+    btnPrimary: { background: `linear-gradient(135deg, ${theme.accent} 0%, #38bdf8 100%)`, color: theme.bg, fontWeight: '700', border: 'none', padding: '12px 20px', borderRadius: '8px', cursor: 'pointer', boxShadow: `0 4px 12px rgba(125, 211, 252, 0.2)` },
+    btnDanger: { background: 'transparent', color: theme.danger, border: `1px solid ${theme.danger}44`, padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px' },
+    btnGhost: { background: 'transparent', border: `1px solid ${theme.border}`, color: theme.muted, padding: '8px 16px', borderRadius: '8px', cursor: 'pointer', fontWeight: '600' },
+    projectItem: (isActive) => ({
+      display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px', borderRadius: '10px', cursor: 'pointer', marginBottom: '8px',
+      background: isActive ? theme.cardSoft : 'transparent', border: `1px solid ${isActive ? theme.accent : 'transparent'}`, transition: '0.2s'
+    })
+  };
+
+  // --- API LOGIC ---
   const fetchProjects = async () => {
-    setLoading(true);
     try {
       const res = await axios.get(`${API_BASE}/api/projects`, { headers: authHeader() });
       setProjects(res.data.data.projects);
-      if (!selectedProject && res.data.data.projects.length > 0) {
-        setSelectedProject(res.data.data.projects[0].id);
-        setTaskForm((prev) => ({ ...prev, projectId: res.data.data.projects[0].id }));
-      }
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
+      if (!selectedProject && res.data.data.projects.length > 0) setSelectedProject(res.data.data.projects[0].id);
+    } catch (e) { console.error(e); }
   };
 
-  const fetchTasks = async (projectId) => {
+  const fetchTasks = async (id) => {
     setTasksLoading(true);
     try {
-      const res = await axios.get(`${API_BASE}/api/tasks/${projectId}/tasks`, { headers: authHeader() });
+      const res = await axios.get(`${API_BASE}/api/tasks/${id}/tasks`, { headers: authHeader() });
       setTasks(res.data.data.tasks);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setTasksLoading(false);
-    }
+    } catch (e) { console.error(e); } finally { setTasksLoading(false); }
   };
 
-  const handleProjectCreate = async (e) => {
+  const handleProjectSubmit = async (e) => {
     e.preventDefault();
     try {
       await axios.post(`${API_BASE}/api/projects`, projectForm, { headers: authHeader() });
       setProjectForm({ name: '', description: '' });
       fetchProjects();
-    } catch (err) {
-      alert(err.response?.data?.message || 'Could not create project');
-    }
+    } catch (err) { alert('Creation failed'); }
   };
 
-  const handleTaskCreate = async (e) => {
+  const deleteProject = async (id, e) => {
+    e.stopPropagation();
+    if (!window.confirm("Delete project?")) return;
+    try {
+      await axios.delete(`${API_BASE}/api/projects/${id}`, { headers: authHeader() });
+      fetchProjects();
+      if (selectedProject === id) setSelectedProject('');
+    } catch (e) { alert("Delete failed"); }
+  };
+
+  const handleTaskSubmit = async (e) => {
     e.preventDefault();
-    const targetProject = taskForm.projectId || selectedProject;
-    if (!targetProject) return alert('Select a project first');
     try {
-      if (editingTaskId) {
-        await axios.patch(
-          `${API_BASE}/api/tasks/${targetProject}/tasks/${editingTaskId}`,
-          taskForm,
-          { headers: authHeader() }
-        );
-      } else {
-        await axios.post(`${API_BASE}/api/tasks/${targetProject}/tasks`, taskForm, { headers: authHeader() });
-      }
-      setTaskForm({ projectId: targetProject, title: '', description: '', priority: 'medium', dueDate: '' });
-      setEditingTaskId('');
-      fetchTasks(targetProject);
-      fetchProjects();
-    } catch (err) {
-      alert(err.response?.data?.message || 'Could not create task');
-    }
+      if (editingTaskId) await axios.patch(`${API_BASE}/api/tasks/${selectedProject}/tasks/${editingTaskId}`, taskForm, { headers: authHeader() });
+      else await axios.post(`${API_BASE}/api/tasks/${selectedProject}/tasks`, taskForm, { headers: authHeader() });
+      setTaskForm({ projectId: selectedProject, title: '', description: '', priority: 'medium' });
+      setEditingTaskId(''); fetchTasks(selectedProject);
+    } catch (err) { alert('Task error'); }
   };
-
-  const handleTaskStatusUpdate = async (taskId, newStatus) => {
-    const targetProject = selectedProject;
-    if (!targetProject) return;
-    try {
-      await axios.patch(
-        `${API_BASE}/api/tasks/${targetProject}/tasks/${taskId}`,
-        { status: newStatus },
-        { headers: authHeader() }
-      );
-      fetchTasks(targetProject);
-      fetchProjects();
-    } catch (err) {
-      alert(err.response?.data?.message || 'Could not update task');
-    }
-  };
-
-  const handleTaskEdit = (task) => {
-    setSelectedProject(task.project_id || selectedProject);
-    setTaskForm({
-      projectId: task.project_id || selectedProject,
-      title: task.title || '',
-      description: task.description || '',
-      priority: task.priority || 'medium',
-      dueDate: task.due_date ? task.due_date.split('T')[0] : '',
-    });
-    setEditingTaskId(task.id);
-  };
-
-  const handleTaskDelete = async (taskId) => {
-    const targetProject = selectedProject;
-    if (!targetProject) return;
-    const confirmDelete = window.confirm('Delete this task?');
-    if (!confirmDelete) return;
-    try {
-      await axios.delete(`${API_BASE}/api/tasks/${targetProject}/tasks/${taskId}`, { headers: authHeader() });
-      if (editingTaskId === taskId) {
-        setEditingTaskId('');
-        setTaskForm({ projectId: targetProject, title: '', description: '', priority: 'medium', dueDate: '' });
-      }
-      fetchTasks(targetProject);
-      fetchProjects();
-    } catch (err) {
-      alert(err.response?.data?.message || 'Could not delete task');
-    }
-  };
-
-  const stats = [
-    { label: 'Projects', value: projects.length || 0 },
-    { label: 'Tasks (all)', value: projects.reduce((sum, p) => sum + Number(p.task_count || 0), 0) },
-  ];
 
   return (
-    <div className="page-shell">
-      <header className="topbar">
-        <div>
-          <p className="eyebrow">Tenant Workspace</p>
-          <h1>Welcome, {user?.fullName || user?.email}</h1>
-          <p className="subhead">All data is scoped to your tenant. JWT protects cross-tenant access.</p>
+    <div style={s.page}>
+      {/* --- GLOBAL HEADER --- */}
+      <nav style={s.nav}>
+        <div style={s.logo}>WELCOME</div>
+        <div style={s.userSection}>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontSize: '14px', fontWeight: 'bold' }}>{user?.fullName || 'User'}</div>
+            {/* <div style={{ fontSize: '11px', color: theme.success, fontWeight: 'bold' }}>● SYSTEM ONLINE</div> */}
+          </div>
+          <button style={s.btnGhost} onClick={logout}>Sign Out</button>
         </div>
-        <button className="btn ghost" onClick={logout}>Logout</button>
-      </header>
+      </nav>
 
-      <section className="stat-grid">
-        {stats.map((s) => (
-          <div key={s.label} className="stat-card">
-            <p className="eyebrow">{s.label}</p>
-            <h2>{s.value}</h2>
-            <p className="muted">Real-time counts powered by tenant-filtered APIs.</p>
-          </div>
-        ))}
-      </section>
-
-      <section className="panel">
-        <div className="panel-head">
-          <div>
-            <p className="eyebrow">Projects</p>
-            <h3>Your organization projects</h3>
-            <p className="muted">Only projects belonging to your tenant are returned.</p>
-          </div>
-          {isAdmin ? (
-            <form className="inline-form" onSubmit={handleProjectCreate}>
-              <input
-                type="text"
-                placeholder="Project name"
-                value={projectForm.name}
-                onChange={(e) => setProjectForm({ ...projectForm, name: e.target.value })}
-                required
-              />
-              <input
-                type="text"
-                placeholder="Description"
-                value={projectForm.description}
-                onChange={(e) => setProjectForm({ ...projectForm, description: e.target.value })}
-              />
-              <button type="submit" className="btn small">Add project</button>
-            </form>
-          ) : (
-            <p className="muted">Project creation is restricted to admins.</p>
+      {/* --- MAIN CONTENT --- */}
+      <div style={s.container}>
+        
+        {/* LEFT BAR */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+          {isAdmin && (
+            <section style={s.card}>
+              <h4 style={{ margin: '0 0 15px 0', color: theme.accent, fontSize: '14px' }}>CREATE PROJECT</h4>
+              <form onSubmit={handleProjectSubmit}>
+                <input style={s.input} placeholder="Project Name" value={projectForm.name} onChange={e => setProjectForm({...projectForm, name: e.target.value})} required />
+                <button style={{ ...s.btnPrimary, width: '100%' }}>Launch</button>
+              </form>
+            </section>
           )}
+
+          <section style={s.card}>
+            <h4 style={{ margin: '0 0 15px 0', fontSize: '14px', color: theme.muted }}>MY PROJECTS</h4>
+            {projects.map(p => (
+              <div key={p.id} style={s.projectItem(selectedProject === p.id)} onClick={() => setSelectedProject(p.id)}>
+                <span style={{ fontWeight: '500' }}>{p.name}</span>
+                {isAdmin && <span style={{ color: theme.danger, cursor: 'pointer', fontSize: '18px' }} onClick={(e) => deleteProject(p.id, e)}>×</span>}
+              </div>
+            ))}
+          </section>
         </div>
 
-        {loading ? (
-          <div className="empty">Loading projects…</div>
-        ) : projects.length === 0 ? (
-          <div className="empty">
-            <p className="muted">No projects yet. Create one to get started.</p>
+        {/* RIGHT CONTENT */}
+        <section style={s.card}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px' }}>
+            <h2 style={{ margin: 0 }}>{projects.find(p => p.id === selectedProject)?.name || 'Select a Project'}</h2>
+            <div style={{ fontSize: '13px', color: theme.muted }}>{tasks.length} Active Tasks</div>
           </div>
-        ) : (
-          <div className="project-grid">
-            {projects.map((p) => (
-              <div key={p.id} className="project-card">
-                <div className="project-meta">
-                  <p className="eyebrow">Tasks: {p.task_count}</p>
-                  <span className="pill">Active</span>
+
+          {/* TASK CREATION BOX */}
+          <div style={{ background: theme.bg2, padding: '20px', borderRadius: '12px', marginBottom: '30px', border: `1px dashed ${theme.border}` }}>
+            <form onSubmit={handleTaskSubmit} style={{ display: 'flex', gap: '15px' }}>
+              <input style={{ ...s.input, marginBottom: 0, flex: 2 }} placeholder="What needs to be done?" value={taskForm.title} onChange={e => setTaskForm({...taskForm, title: e.target.value})} required />
+              <select style={{ ...s.input, marginBottom: 0, flex: 1 }} value={taskForm.priority} onChange={e => setTaskForm({...taskForm, priority: e.target.value})}>
+                <option value="low">Low</option>
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
+              </select>
+              <button style={s.btnPrimary}>{editingTaskId ? 'Update' : 'Add Task'}</button>
+            </form>
+          </div>
+
+          {/* TASK LIST */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            {tasksLoading ? <p>Loading data streams...</p> : tasks.map(t => (
+              <div key={t.id} style={{ ...s.card, background: theme.bg2, display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px' }}>
+                <div>
+                  <div style={{ fontSize: '12px', color: theme.accent, fontWeight: '800', marginBottom: '4px' }}>{t.priority.toUpperCase()}</div>
+                  <div style={{ fontWeight: '600', fontSize: '16px' }}>{t.title}</div>
                 </div>
-                <h4>{p.name}</h4>
-                <p className="muted">{p.description || 'No description provided.'}</p>
-                <div className="project-footer">
-                  <span className="muted">Created by: {p.creator_name || 'Unknown'}</span>
-                  <span className="muted">Updated: {new Date(p.updated_at || p.created_at || Date.now()).toLocaleDateString()}</span>
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <button style={{ background: 'transparent', border: 'none', color: theme.accent, cursor: 'pointer', fontWeight: 'bold' }} onClick={() => { setEditingTaskId(t.id); setTaskForm(t); }}>EDIT</button>
+                  <button style={s.btnDanger} onClick={() => alert('Delete Logic here')}>DELETE</button>
                 </div>
               </div>
             ))}
           </div>
-        )}
-      </section>
+        </section>
 
-      <section className="panel">
-        <div className="panel-head">
-          <div>
-            <p className="eyebrow">Tasks</p>
-            <h3>Create and track tasks</h3>
-            <p className="muted">Tasks are always scoped to a project inside your tenant.</p>
-          </div>
-        </div>
-
-        <div className="task-layout">
-          <div className="task-form">
-            {canEditTasks ? (
-              <form onSubmit={handleTaskCreate} className="form-grid">
-                <label className="field">
-                  <span>Project</span>
-                  <select
-                    value={taskForm.projectId || selectedProject}
-                    onChange={(e) => {
-                      setSelectedProject(e.target.value);
-                      setTaskForm({ ...taskForm, projectId: e.target.value });
-                    }}
-                    required
-                  >
-                    <option value="" disabled>Select a project</option>
-                    {projects.map((p) => (
-                      <option key={p.id} value={p.id}>{p.name}</option>
-                    ))}
-                  </select>
-                </label>
-                <label className="field">
-                  <span>Title</span>
-                  <input
-                    type="text"
-                    value={taskForm.title}
-                    onChange={(e) => setTaskForm({ ...taskForm, title: e.target.value })}
-                    required
-                  />
-                </label>
-                <label className="field">
-                  <span>Description</span>
-                  <textarea
-                    value={taskForm.description}
-                    onChange={(e) => setTaskForm({ ...taskForm, description: e.target.value })}
-                    rows={2}
-                  />
-                </label>
-                <label className="field">
-                  <span>Priority</span>
-                  <select
-                    value={taskForm.priority}
-                    onChange={(e) => setTaskForm({ ...taskForm, priority: e.target.value })}
-                  >
-                    <option value="low">Low</option>
-                    <option value="medium">Medium</option>
-                    <option value="high">High</option>
-                  </select>
-                </label>
-                <label className="field">
-                  <span>Due date</span>
-                  <input
-                    type="date"
-                    value={taskForm.dueDate}
-                    onChange={(e) => setTaskForm({ ...taskForm, dueDate: e.target.value })}
-                  />
-                </label>
-                <button type="submit" className="btn primary">{editingTaskId ? 'Update task' : 'Add task'}</button>
-              </form>
-            ) : (
-              <div className="empty">You need additional permissions to create tasks.</div>
-            )}
-          </div>
-
-          <div className="task-list">
-            {tasksLoading ? (
-              <div className="empty">Loading tasks…</div>
-            ) : !selectedProject ? (
-              <div className="empty">Select a project to view its tasks.</div>
-            ) : tasks.length === 0 ? (
-              <div className="empty">No tasks yet for this project.</div>
-            ) : (
-              tasks.map((t) => (
-                <div key={t.id} className="task-card">
-                  <div className="task-meta">
-                    <span className="pill">{t.priority || 'medium'}</span>
-                    <span className="muted">{new Date(t.created_at || Date.now()).toLocaleDateString()}</span>
-                  </div>
-                  <h4>{t.title}</h4>
-                  <p className="muted">{t.description || 'No description.'}</p>
-                  <p className="muted">Status: {t.status || 'todo'}</p>
-                  <p className="muted">Assigned to: {t.assignee_name || 'Unassigned'}</p>
-                  {canEditTasks && (
-                    <div className="inline-form">
-                      <select
-                        value={t.status || 'todo'}
-                        onChange={(e) => handleTaskStatusUpdate(t.id, e.target.value)}
-                      >
-                        {STATUS_OPTIONS.map((opt) => (
-                          <option key={opt.value} value={opt.value}>{opt.label}</option>
-                        ))}
-                      </select>
-                      <button className="btn small" type="button" onClick={() => handleTaskEdit(t)}>Edit</button>
-                      <button className="btn small danger" type="button" onClick={() => handleTaskDelete(t.id)}>Delete</button>
-                    </div>
-                  )}
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-      </section>
+      </div>
     </div>
   );
 };

@@ -51,3 +51,58 @@ exports.getProjects = async (req, res) => {
     res.status(500).json({ success: false, message: err.message });
   }
 };
+
+
+// Add these to your projectController.js
+exports.updateProject = async (req, res) => {
+  const { id } = req.params;
+  const { name, description } = req.body;
+  const { tenantId, userId } = req.user;
+
+  try {
+    const updatedProject = await db.query(
+      'UPDATE projects SET name = $1, description = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $3 AND tenant_id = $4 RETURNING *',
+      [name, description, id, tenantId]
+    );
+
+    if (updatedProject.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Project not found' });
+    }
+
+    // Audit Log
+    await db.query(
+      'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, entity_id) VALUES ($1, $2, $3, $4, $5)',
+      [tenantId, userId, 'UPDATE_PROJECT', 'project', id]
+    );
+
+    res.json({ success: true, data: updatedProject.rows[0] });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+exports.deleteProject = async (req, res) => {
+  const { id } = req.params;
+  const { tenantId, userId } = req.user;
+
+  try {
+    const deletedProject = await db.query(
+      'DELETE FROM projects WHERE id = $1 AND tenant_id = $2 RETURNING *',
+      [id, tenantId]
+    );
+
+    if (deletedProject.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Project not found' });
+    }
+
+    // Audit Log
+    await db.query(
+      'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, entity_id) VALUES ($1, $2, $3, $4, $5)',
+      [tenantId, userId, 'DELETE_PROJECT', 'project', id]
+    );
+
+    res.json({ success: true, message: 'Project deleted successfully' });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
